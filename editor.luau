@@ -241,7 +241,7 @@ function tick(dt)
 			saveConfig()
 			print("Autosaved project sucessfully")
 		else
-			print("dis gubby tried to save with no objects, siwwy little gub gub x3") -- slime me out for writing this please
+			print("autosave failed, no objects loaded")
 		end
 		timerStart = timer + saveTime
 	end
@@ -351,8 +351,8 @@ function onGui()
 	if Gui.beginTabItem("Properties") then
 		if selectedObject ~= -1 then
 			local object = objects[selectedObject]
-			if object == nil then -- you somehow selected a deleted object, how the FUCK?
-				print("added logigng since this WILL cause errors later") -- it didnt somehow, but imma keep this logging for if i release it and it SOMEHOW reaches this fuckass state that i couldnt even forcefully get myself to lol
+			if object == nil then -- you somehow selected a deleted object, how the freak?
+				print("added logigng since this WILL cause errors later") -- it didnt somehow, but imma keep this logging for if i release it and it SOMEHOW reaches this stupid state that i couldnt even forcefully get myself to lol
 				selectedObject = -1
 			end
 
