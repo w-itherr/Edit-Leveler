@@ -1,0 +1,15 @@
+{
+    "name": "witherr.editleveler",
+    "displayName": "Edit Leveler",
+    "version": "1.1.0",
+    "description": "A bad port of the Level Editor over to Spectator.",
+    "main": "editor.luau",
+    "keywords": [
+        "freecam",
+        "leveleditor",
+        "editor"
+    ],
+    "author": "Witherr",
+    "defaultKeybind": "L",
+    "url": "https://github.com/w-itherr/Edit-Leveler.git"
+}
