@@ -1,2 +1,2 @@
 # Edit-Leveler
-A version of Level Editor brought over to spectator
+A Spectator version of Level Editor using local World Draw
