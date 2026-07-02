@@ -10,16 +10,26 @@
 	Formatting.luau - This is another library I made but this one is for just converting one type to other
 	Freecam.luau - This controls how you move and rotate the camera, taken this code from the anotheraxiom.freecam script and modified to have the features I needed
 	ObjectDrawer.luau - This handles everything to do with everything you see on the screen such as; the objects being drawn and the gizmos being drawn
+	Profiler.luau - This is a profiler made by dennssen, not made by me at all
 
 	If you see anything that you think should be changed via code, feel free to tell me in the thread! Just dont be rude about it please :]
 	Also everything here was made over a few months of me working on this and then not at really late into the night, so everything WILL be messy lol
 ]]
 
-local freecam = require("./freecam")
+local useProfiler = false
+local Profiler = require("profiler")
+
 local ObjectDrawer = require("objectDrawer")
 local Formatting = require("formatting")
 local Freecam = require("freecam")
 local Controlling = require("controlling")
+
+if useProfiler then
+	ObjectDrawer = Profiler:wrapClass(ObjectDrawer)
+	Formatting = Profiler:wrapClass(Formatting)
+	Freecam = Profiler:wrapClass(Freecam)
+	Controlling = Profiler:wrapClass(Controlling)
+end
 
 local folders = {}
 local objects = {}
@@ -94,7 +104,7 @@ function onTransitionBegin(transitionInfo: Transition)
 	camera.position = Vec3.new(0, 2200, -28500)
 	camera.rotation = Quat.fromEuler(0, 0, 90)
 	camera.fieldOfView = 70
-	freecam.setRotAndGrav(Vec3.new(0, -90, 0), Quat.fromEuler(0, 0, 90))
+	Freecam.setRotAndGrav(Vec3.new(0, -90, 0), Quat.fromEuler(0, 0, 90))
 
 	timer = DateTime.getCurrentTime().ticks / 10000000
 	timerStart = timer + saveTime
@@ -148,7 +158,9 @@ function RedrawAll()
 		end
 	end
 end
-
+if useProfiler then
+	RedrawAll = Profiler:wrap(RedrawAll)
+end
 function DoGizmoControlling()
 	if selectedObject ~= -1 then
 		local object = objects[selectedObject]
@@ -162,8 +174,11 @@ function DoGizmoControlling()
 		end
 	end
 end
-
+if useProfiler then
+	DoGizmoControlling = Profiler:wrap(DoGizmoControlling)
+end
 function tick(dt)
+	Profiler:tick(dt)
 	RedrawAll()
 	if not (S_hideGizmosOnUIOpen and not isGuiOpen) then
 		DoGizmoControlling()
@@ -235,9 +250,12 @@ function tick(dt)
 	lastNKeyPress = Input.getKey(Input.Key.N)
 	isGuiOpen = false
 end
-
+if useProfiler then
+	tick = Profiler:wrapScriptTick(tick)
+end
 function onGui()
 	isGuiOpen = true
+
 	Gui.beginTabBar("Options")
 	if Gui.beginTabItem("Hierarchy") then
 		search = Gui.inputText("Search", search)
@@ -590,9 +608,15 @@ function onGui()
 		Gui.separatorText("Debug stuff?")
 		Gui.text("Autosave timer: " .. tostring(timerStart - timer))
 		Gui.text("Is GUI Open: " .. tostring(isGuiOpen))
-
+		if useProfiler then
+			Profiler:controls()
+			Profiler:graph()
+		end
 		Gui.endTabItem()
 	end
 	Gui.endTabBar()
 	isGuiOpen = true
+end
+if useProfiler then
+	onGui = Profiler:wrap(onGui)
 end

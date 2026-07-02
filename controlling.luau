@@ -12,48 +12,31 @@ local frozenOrigPoint = Vec3.zeroVector
 local frozenStartRotation = Quat.new(0, 0, 0, 1)
 local frozenStartHitPoint = Vec3.zeroVector
 
-function Controlling.GetIfMouseIsIn2Pos(A: Vec3, B: Vec3): boolean
-	local camPos = camera.position
-	local rayDir = (camera:castRayFromMouse().position - camPos):getSafeNormal()
+local translateRadius = 100
 
+function Controlling.GetIfMouseIsIn2Pos(camPos: Vec3, rayDir: Vec3, A: Vec3, B: Vec3)
 	local AB = B - A
 	local AO = camPos - A
-
 	local dotABAB = AB:dot(AB)
 	local dotABDir = AB:dot(rayDir)
-	local dotDirDir = rayDir:dot(rayDir) -- dir dir? tung tung, im so funny 😂😂🤣🤣🤣🤣🤣
 	local dotABAO = AB:dot(AO)
 	local dotDirAO = rayDir:dot(AO)
-
-	local denom = dotABAB * dotDirDir - dotABDir * dotABDir
-
+	local denom = dotABAB - dotABDir * dotABDir
 	local t, u
-
 	if math.abs(denom) < 1e-6 then
 		t = 0
 		u = dotABAO / dotABAB
 	else
 		t = (dotABDir * dotABAO - dotABAB * dotDirAO) / denom
-		u = (dotDirDir * dotABAO - dotABDir * dotDirAO) / denom
+		u = (dotABAO - dotABDir * dotDirAO) / denom
 	end
-
 	if t < 0 then
 		t = 0
 	end
 	u = math.max(0, math.min(1, u))
+	local delta = (camPos + rayDir * t) - (A + AB * u)
 
-	local closestRayPoint = camPos + rayDir * t
-	local closestSegPoint = A + AB * u
-
-	local dist = closestRayPoint:distance(closestSegPoint)
-
-	local rad = 10
-
-	if dist <= rad then
-		return true
-	end
-
-	return false
+	return delta:dot(delta) <= translateRadius
 end
 
 function Controlling.RayPlaneIntersection(rayOrigin: Vec3, rayDir: Vec3, planePoint: Vec3, planeNormal): (Vec3, number)
@@ -182,9 +165,12 @@ function Controlling.ControlTranslateGizmo(object: {
 	else
 		lastMouseScreenPos = Vec3.zeroVector
 
-		local isUp = Controlling.GetIfMouseIsIn2Pos(origPoint, upEnd)
-		local isRight = Controlling.GetIfMouseIsIn2Pos(origPoint, rightEnd)
-		local isForward = Controlling.GetIfMouseIsIn2Pos(origPoint, forwardEnd)
+		local camPos = camera.position
+		local rayDir = (camera:castRayFromMouse().position - camPos):getSafeNormal()
+
+		local isUp = Controlling.GetIfMouseIsIn2Pos(camPos, rayDir, origPoint, upEnd)
+		local isRight = Controlling.GetIfMouseIsIn2Pos(camPos, rayDir, origPoint, rightEnd)
+		local isForward = Controlling.GetIfMouseIsIn2Pos(camPos, rayDir, origPoint, forwardEnd)
 
 		if isUp then
 			controllingAxis = 2
@@ -314,10 +300,12 @@ function Controlling.ControlScaleGizmo(object: {
 		end
 	else
 		lastMouseScreenPos = Vec3.zeroVector
+		local camPos = camera.position
+		local rayDir = (camera:castRayFromMouse().position - camPos):getSafeNormal()
 
-		local isUp = Controlling.GetIfMouseIsIn2Pos(origPoint, origPoint + up * 50)
-		local isForward = Controlling.GetIfMouseIsIn2Pos(origPoint, origPoint + forward * 50)
-		local isRight = Controlling.GetIfMouseIsIn2Pos(origPoint, origPoint + right * 50)
+		local isUp = Controlling.GetIfMouseIsIn2Pos(camPos, rayDir, origPoint, origPoint + up * 50)
+		local isForward = Controlling.GetIfMouseIsIn2Pos(camPos, rayDir, origPoint, origPoint + forward * 50)
+		local isRight = Controlling.GetIfMouseIsIn2Pos(camPos, rayDir, origPoint, origPoint + right * 50)
 
 		if isUp then
 			isControlling = true
