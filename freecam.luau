@@ -1,5 +1,11 @@
 --!strict
 
+type Freecam = {
+	setRotAndGrav: (rot: Vec3, gravity: Quat) -> (),
+	frecamtick: (dt: number, rotateCam: boolean) -> (),
+}
+local Freecam = {} :: Freecam
+
 -- this is just the old freecam code but modified to remove some bits :]
 
 local forwardKey = Input.Key.W
@@ -43,17 +49,15 @@ local lookInputTarget = Vec3.zeroVector
 local gravityChaseSpeed = 6
 local gravitySlowChaseSpeed = 0.5
 
-local freecam = {}
-
 local rotEuler = Vec3.zeroVector -- this if for freecam
 local gravityChaser = gravity.upRotation
 
-function freecam.setRotAndGrav(rot: Vec3, gravity: Quat)
+function Freecam.setRotAndGrav(rot: Vec3, gravity: Quat)
 	rotEuler = rot
 	gravityChaser = gravity
 end
 
-function freecam.frecamtick(dt, rotateCam: boolean)
+function Freecam.frecamtick(dt, rotateCam: boolean)
 	local forward = camera.rotation:getForwardVector()
 	local right = camera.rotation:getRightVector()
 	local up = camera.rotation:getUpVector()
@@ -164,18 +168,4 @@ function freecam.frecamtick(dt, rotateCam: boolean)
 	camera.rotation = gravityChaser * Quat.fromEuler(rotEuler.x, rotEuler.y, rotEuler.z)
 end
 
-function setSmoothing(smoothing: boolean)
-	if smoothing then
-		camera.positionSmoothing = 0.15
-		camera.rotationSmoothing = 0.02
-		lookSmoothness = 0.7
-		camera.fieldOfViewSmoothing = 0.15
-	else
-		camera.positionSmoothing = 0.02
-		camera.rotationSmoothing = 0.02
-		lookSmoothness = 0
-		camera.fieldOfViewSmoothing = 0.05
-	end
-end
-
-return freecam
+return Freecam

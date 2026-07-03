@@ -1,7 +1,7 @@
 {
     "name": "witherr.editleveler",
     "displayName": "Edit Leveler",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "description": "A Spectator version of Level Editor using local World Draw",
     "main": "editor.luau",
     "keywords": [

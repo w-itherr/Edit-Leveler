@@ -161,6 +161,7 @@ end
 if useProfiler then
 	RedrawAll = Profiler:wrap(RedrawAll)
 end
+
 function DoGizmoControlling()
 	if selectedObject ~= -1 then
 		local object = objects[selectedObject]
@@ -177,6 +178,7 @@ end
 if useProfiler then
 	DoGizmoControlling = Profiler:wrap(DoGizmoControlling)
 end
+
 function tick(dt)
 	Profiler:tick(dt)
 	RedrawAll()
@@ -253,6 +255,7 @@ end
 if useProfiler then
 	tick = Profiler:wrapScriptTick(tick)
 end
+
 function onGui()
 	isGuiOpen = true
 

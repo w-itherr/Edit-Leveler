@@ -1,4 +1,19 @@
-local Drawing = {}
+--!strict
+
+type Drawing = {
+	DrawFace: (point0: Vec3, point1: Vec3, point2: Vec3, point3: Vec3, colour: LinearColor) -> (),
+	DrawPolygon: (points: {}, colour: LinearColor) -> (),
+	DrawCircle: (
+		radius: number,
+		position: Vec3,
+		upDirection: Vec3,
+		rightDirection: Vec3,
+		r: number,
+		g: number,
+		b: number
+	) -> (),
+}
+local Drawing = {} :: Drawing
 
 function Drawing.DrawFace(point0: Vec3, point1: Vec3, point2: Vec3, point3: Vec3, colour: LinearColor) -- bottom left, top left, bottom right, top right
 	WorldDraw.drawTriangle(point0, point1, point2, colour, 0)

@@ -1,6 +1,10 @@
 --!strict
 
-local Formatting = {}
+type Formatting = {
+	Vec3ToString: (vec3: Vec3) -> string,
+	LinearColourToQuat: (colour: LinearColor) -> Quat,
+}
+local Formatting = {} :: Formatting
 
 function Formatting.Vec3ToString(vec3: Vec3): string
 	return "X="

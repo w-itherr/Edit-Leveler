@@ -1,7 +1,12 @@
 --!strict
-
-local ObjectDrawer = {}
 local Drawing = require("./drawing")
+
+type ObjectDrawer = {
+	DrawCube: (transform: Transform, colour: LinearColor, outline: boolean) -> (),
+	DrawCylinder: (transform: Transform, colour: LinearColor, outline: boolean, sides: number) -> (),
+	DrawGizmos: (transform: Transform, mode: number) -> (),
+}
+local ObjectDrawer = {} :: ObjectDrawer
 
 function ObjectDrawer.DrawCube(transform: Transform, colour: LinearColor, outline: boolean)
 	local rotation = transform.rotation
@@ -129,9 +134,13 @@ function ObjectDrawer.DrawCylinder(transform: Transform, colour: LinearColor, ou
 
 	if outline then
 		local size = 1
+
 		local additionalSize = 0.75
-		local halfAdd = additionalSize * 0.5
-		local outlineCenter = center - (upDir + rightDir + forwardDir) * halfAdd
+
+		local outlineCenter = transform.position
+			- (upDir * (additionalSize / 2))
+			- (rightDir * (additionalSize / 2))
+			- (forwardDir * (additionalSize / 2))
 
 		local outlineWidth = (scale.x * 100) + additionalSize
 		local outlineHeight = (scale.y * 100) + additionalSize

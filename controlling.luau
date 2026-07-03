@@ -1,6 +1,24 @@
 --!strict
 
-local Controlling = {}
+type Object = {
+	transform: Transform,
+	name: string,
+	folder: string,
+	colour: LinearColor,
+	type: number,
+}
+
+type Controlling = {
+	GetIfMouseIsIn2Pos: (camPos: Vec3, rayDir: Vec3, A: Vec3, B: Vec3) -> boolean,
+	RayPlaneIntersection: (rayOrigin: Vec3, rayDir: Vec3, planePoint: Vec3, planeNormal: Vec3) -> (Vec3, number),
+	IsMouseOnRotationRing: (center: Vec3, normal: Vec3, radius: number, thickness: number) -> boolean,
+	SignedAngle: (a: Vec3, b: Vec3, axis: Vec3) -> number,
+	GetMovementAlongLine: (lineStart: Vec3, lineEnd: Vec3) -> number,
+	ControlTranslateGizmo: (object: Object) -> (),
+	ControlRotateGizmo: (object: Object) -> (),
+	ControlScaleGizmo: (object: Object) -> (),
+}
+local Controlling: Controlling = {} :: Controlling
 
 local controllingAxis = 0
 local isControlling = false
@@ -14,7 +32,7 @@ local frozenStartHitPoint = Vec3.zeroVector
 
 local translateRadius = 100
 
-function Controlling.GetIfMouseIsIn2Pos(camPos: Vec3, rayDir: Vec3, A: Vec3, B: Vec3)
+function Controlling.GetIfMouseIsIn2Pos(camPos: Vec3, rayDir: Vec3, A: Vec3, B: Vec3): boolean
 	local AB = B - A
 	local AO = camPos - A
 	local dotABAB = AB:dot(AB)
@@ -39,7 +57,12 @@ function Controlling.GetIfMouseIsIn2Pos(camPos: Vec3, rayDir: Vec3, A: Vec3, B: 
 	return delta:dot(delta) <= translateRadius
 end
 
-function Controlling.RayPlaneIntersection(rayOrigin: Vec3, rayDir: Vec3, planePoint: Vec3, planeNormal): (Vec3, number)
+function Controlling.RayPlaneIntersection(
+	rayOrigin: Vec3,
+	rayDir: Vec3,
+	planePoint: Vec3,
+	planeNormal: Vec3
+): (Vec3, number)
 	local denom = planeNormal:dot(rayDir)
 
 	if math.abs(denom) < 1e-6 then
@@ -119,13 +142,7 @@ function Controlling.GetMovementAlongLine(lineStart: Vec3, lineEnd: Vec3): numbe
 	return movement
 end
 
-function Controlling.ControlTranslateGizmo(object: {
-	transform: Transform,
-	name: string,
-	folder: string,
-	colour: LinearColor,
-	type: number,
-})
+function Controlling.ControlTranslateGizmo(object: Object)
 	local origPoint = object.transform.position
 
 	local forward = object.transform.rotation:getForwardVector()
@@ -189,13 +206,7 @@ function Controlling.ControlTranslateGizmo(object: {
 	return not isControlling
 end
 
-function Controlling.ControlRotateGizmo(object: {
-	transform: Transform,
-	name: string,
-	folder: string,
-	colour: LinearColor,
-	type: number,
-})
+function Controlling.ControlRotateGizmo(object: Object)
 	local origPoint = object.transform.position
 	local up = object.transform.rotation:getUpVector()
 	local right = object.transform.rotation:getRightVector()
@@ -252,13 +263,7 @@ function Controlling.ControlRotateGizmo(object: {
 	return not isControlling
 end
 
-function Controlling.ControlScaleGizmo(object: {
-	transform: Transform,
-	name: string,
-	folder: string,
-	colour: LinearColor,
-	type: number,
-})
+function Controlling.ControlScaleGizmo(object: Object)
 	local origPoint = object.transform.position
 
 	local forward = object.transform.rotation:getForwardVector()
