@@ -616,8 +616,8 @@ function onGui()
 					saveConfig()
 				end
 
-				for n, p in config.saves do
-					if Gui.selectable(p .. "##" .. n, false) then
+				for n, p in pairs(config.saves) do
+					if Gui.selectable(n .. "##" .. n, false) then
 						if LoadProject(n) then
 							currentProjectName = n
 						end
