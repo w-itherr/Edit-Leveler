@@ -98,7 +98,7 @@ function GetAssets()
 	for i, fileName in ipairs(LuauFile.listFiles("Objects")) do
 		local lower = fileName:lower()
 		print(lower)
-		if lower:match("%.md$") then
+		if lower:match("%.glb$") or lower:match("%.gltf$") then
 			print(lower)
 			local asset = {
 				path = lower,
@@ -191,12 +191,12 @@ function SpawnMesh(objectPath: string, objectName: string, objectTransform: Tran
 	local baseDir = objectPath:match("^(.*)/[^/]+$") or ""
 
 	local ok, vertices, triangles, normals, uvs, _textures
-	if objectPath:lower():match("%.md$") then
+	if objectPath:lower():match("%.glb$") then
 		local bytes = LuauFile.loadBytes(objectPath)
 		if #bytes == 0 then
 			print("Failed to read " .. objectPath .. " defaulting to cube.")
-			if objectName ~= "objects/cube.md" then
-				SpawnMesh("objects/cube.md", objectName, objectTransform)
+			if objectName ~= "objects/cube.glb" then
+				SpawnMesh("objects/cube.glb", objectName, objectTransform)
 			else
 				print(
 					"bro why are you even using edit leveler without a cube, but fine i'll default to the FIRST object you have saved..."
@@ -617,7 +617,7 @@ function onGui()
 				end
 
 				for n, p in config.saves do
-					if Gui.selectable(n .. "##" .. n, false) then
+					if Gui.selectable(p .. "##" .. n, false) then
 						if LoadProject(n) then
 							currentProjectName = n
 						end
