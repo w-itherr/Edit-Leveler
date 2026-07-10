@@ -4,69 +4,67 @@
 	Hello fellow code reader! Please be aware all of this code is really messy but here is a few key things that if you are looking for, hopefully this can help :]
 	Everything is split into their own files and the names are a bit confusing but they should be descriptive of what they do!
 
-	Controlling.luau - This handles everything to do with all the gizmos and all the math that this project took just for it to be in a good enough state to release
-	Drawing.luau - This is just a simple little library I use here and there for drawing stuff (Faces, Polygons and Circles)
-	Editor.luau - This is the file you are in but this brings everything together
-	Formatting.luau - This is another library I made but this one is for just converting one type to other
-	Freecam.luau - This controls how you move and rotate the camera, taken this code from the anotheraxiom.freecam script and modified to have the features I needed
-	ObjectDrawer.luau - This handles everything to do with everything you see on the screen such as; the objects being drawn and the gizmos being drawn
-	Profiler.luau - This is a profiler made by dennssen, not made by me at all
+	/Editor.luau - This is the file you are in but this brings everything together
 
+	/Drawing/DrawingHelper.luau - This is just a simple little library I use here and there for drawing stuff (Faces, Polygons and Circles)
+	/Drawing/ObjectDrawer.luau - This handles everything to do with everything you see on the screen such as; the objects being drawn and the gizmos being drawn
+	/Librarys/Controlling.luau - This handles everything to do with all the gizmos and all the math that this project took just for it to be in a good enough state to release
+	/Librarys/Freecam.luau - This controls how you move and rotate the camera, taken this code from the anotheraxiom.freecam script and modified to have the features I needed
+		
 	If you see anything that you think should be changed via code, feel free to tell me in the thread! Just dont be rude about it please :]
 	Also everything here was made over a few months of me working on this and then not at really late into the night, so everything WILL be messy lol
 ]]
 
-local useProfiler = false
-local Profiler = require("profiler")
+local ObjectDrawer = require("Drawing/objectDrawer")
+local Gltf = require("Drawing/gltf")
+local Freecam = require("Librarys/freecam")
+local Controlling = require("Librarys/controlling")
 
-local ObjectDrawer = require("objectDrawer")
-local Formatting = require("formatting")
-local Freecam = require("freecam")
-local Controlling = require("controlling")
+-- Types
+type Asset = {
+	name: string,
+	path: string,
+}
 
-if useProfiler then
-	ObjectDrawer = Profiler:wrapClass(ObjectDrawer)
-	Formatting = Profiler:wrapClass(Formatting)
-	Freecam = Profiler:wrapClass(Freecam)
-	Controlling = Profiler:wrapClass(Controlling)
-end
+type Object = {
+	name: string,
+	transform: Transform,
+	folder: string,
+	meshPath: string,
+}
 
-local folders = {}
-local objects = {}
+type Folder = {
+	name: string,
+	open: boolean,
+}
+
+type LoadedObject = {
+	Object: Object,
+	LuauMesh: LuauMesh,
+}
+
+type ProjectObject = {
+	name: string,
+	transform: Transform,
+	folder: string,
+	meshPath: string,
+	colour: LinearColor | {},
+}
+
+type EditProject = {
+	LoadedObjects: { ProjectObject },
+}
+
+local Assets: { Asset } = {}
+local LoadedObjects: { LoadedObject } = {}
+local Folders: { Folder } = {}
 
 -- object stuff
 local selectedObject = -1
 local search = ""
 local currentSelectionMode = 0 -- 0 = Translation, 1 = Rotation, 2 = Scale
-local objectTypes = {
-	{
-		Name = "Cube",
-		TypeIndex = 1,
-		PrevPress = false,
-		DrawFunction = function(object, isSelected)
-			ObjectDrawer.DrawCube(object.transform, object.colour, isSelected)
-		end,
-	},
-	{
-		Name = "Cylinder",
-		TypeIndex = 2,
-		PrevPress = false,
-		DrawFunction = function(object, isSelected)
-			ObjectDrawer.DrawCylinder(object.transform, object.colour, isSelected, 16)
-		end,
-	},
-	{
-		Name = "Prism",
-		TypeIndex = 3,
-		PrevPress = false,
-		DrawFunction = function(object, isSelected)
-			ObjectDrawer.DrawCylinder(object.transform, object.colour, isSelected, 3)
-		end,
-	},
-}
 
 -- Inputs
-local lastNKeyPress = false
 local prevSpacebarPress = false
 
 ---- GUI Views
@@ -95,92 +93,267 @@ local isGuiOpen = false
 -- Settings
 local S_hideGizmosOnUIOpen = true
 
+function GetAssets()
+	Assets = {}
+	for i, fileName in ipairs(LuauFile.listFiles("Objects")) do
+		local lower = fileName:lower()
+		print(lower)
+		if lower:match("%.glb$") or lower:match("%.gltf$") then
+			print(lower)
+			local asset = {
+				path = lower,
+				name = fileName:split("/")[#fileName:split("/")]:split(".")[1],
+			}
+			table.insert(Assets, asset)
+		end
+	end
+end
+
 function onTransitionBegin(transitionInfo: Transition)
 	camera.positionSmoothing = 0.02
 	camera.rotationSmoothing = 0.02
 	camera.fieldOfViewSmoothing = 0.05
 	transitionInfo.length = 0
 	postProcessSettings.depthOfFieldFocalDistance = 0
-	camera.position = Vec3.new(0, 2200, -28500)
-	camera.rotation = Quat.fromEuler(0, 0, 90)
 	camera.fieldOfView = 70
-	Freecam.setRotAndGrav(Vec3.new(0, -90, 0), Quat.fromEuler(0, 0, 90))
+
+	local gamemodes: { string } = SpectatorGamemodes.listGamemodeIds()
+
+	if #gamemodes == 0 then -- assume this is shuttle
+		camera.position = Vec3.new(1325.000, 15.000, 84.000)
+		camera.rotation = Quat.fromEuler(0, -5.000, -53)
+		Freecam.setRotAndGrav(Vec3.new(0, -5, -53), Quat.fromEuler(0, 0, 0))
+	else
+		for i, gamemode in ipairs(gamemodes) do
+			if gamemode:find("scraprun") or gamemode:find("TKB_") then -- assume this orion
+				camera.position = Vec3.new(25000.000, 2850.000, 13790.00)
+				camera.rotation = Quat.fromEuler(0, 0, 90)
+				Freecam.setRotAndGrav(Vec3.new(0, 0, 90), Quat.fromEuler(0, 90, 0))
+				break
+			elseif gamemode:find("Gamma 0") or gamemode:find("Beta 0") or gamemode:find("Alpha 0") then -- assume this is ares lol
+				camera.position = Vec3.new(-474.586, -7617.812, 237.312)
+				camera.rotation = Quat.fromEuler(0, -7.553, -61.674)
+				Freecam.setRotAndGrav(Vec3.new(0, -7.553, -61.674), Quat.fromEuler(0, 0, 0))
+				break
+			end
+		end
+	end
 
 	timer = DateTime.getCurrentTime().ticks / 10000000
 	timerStart = timer + saveTime
+	GetAssets()
+
+	Folders = {}
+	LoadedObjects = {}
+	selectedObject = -1
+
+	WorldDraw.clearAll()
 end
 
 function RedrawAll()
-	WorldDraw.clearAll()
+	WorldDraw.clear()
 
-	local cameraPos = camera:getSmoothedPosition()
+	for i, object in ipairs(LoadedObjects) do
+		object.LuauMesh.position = object.Object.transform.position
+		object.LuauMesh.rotation = object.Object.transform.rotation
+		local newScale = object.Object.transform.scale * 100
 
-	local sortedObjects = {}
-	for i, object: {
-		transform: Transform,
-		name: string,
-		folder: string,
-		colour: LinearColor,
-		type: number,
-	} in
-		ipairs(objects)
-	do
-		local distance = object.transform.position:distance(cameraPos)
+		if newScale.x == 0 then -- this has to be done as when luaumesh's are scale to 0 they just go invis and that isnt really the functionality i would like
+			newScale.x = 0.0001
+		end
+		if newScale.y == 0 then
+			newScale.y = 0.0001
+		end
+		if newScale.z == 0 then
+			newScale.z = 0.0001
+		end
 
-		table.insert(sortedObjects, {
-			index = i,
-			object = object,
-			distance = distance,
-		})
+		object.LuauMesh.scale = newScale
+
+		object.LuauMesh:draw()
 	end
 
-	table.sort(sortedObjects, function(a, b)
-		return a.distance > b.distance
-	end)
-
-	for _, item in ipairs(sortedObjects) do
-		local i = item.index
-		local object = item.object
-		local drawIt = selectedObject == i
+	if selectedObject ~= -1 then
+		local object = LoadedObjects[selectedObject]
+		local drawIt = true
 		if S_hideGizmosOnUIOpen and not isGuiOpen then
 			drawIt = false
 		end
 
-		for io, objectType in ipairs(objectTypes) do
-			if objectType.TypeIndex == object.type then
-				objectType.DrawFunction(object, drawIt)
-				break
-			end
-		end
-
-		if selectedObject == i and drawIt then
-			ObjectDrawer.DrawGizmos(object.transform, currentSelectionMode)
+		if drawIt then
+			ObjectDrawer.DrawGizmos(object.Object.transform, currentSelectionMode)
 		end
 	end
+	--end
 end
-if useProfiler then
-	RedrawAll = Profiler:wrap(RedrawAll)
+
+function SpawnMesh(objectPath: string, objectName: string, objectTransform: Transform) -- yoinked from aa.modelviewer and slightly modified to use what i need to use :]
+	local baseDir = objectPath:match("^(.*)/[^/]+$") or ""
+
+	local ok, vertices, triangles, normals, uvs, _textures
+	if objectPath:lower():match("%.glb$") then
+		local bytes = LuauFile.loadBytes(objectPath)
+		if #bytes == 0 then
+			print("Failed to read " .. objectPath .. " defaulting to cube.")
+			if objectName ~= "objects/cube.glb" then
+				SpawnMesh("objects/cube.glb", objectName, objectTransform)
+			else
+				print(
+					"bro why are you even using edit leveler without a cube, but fine i'll default to the FIRST object you have saved..."
+				)
+				SpawnMesh(Assets[0].path, objectName, objectTransform)
+			end
+			return
+		end
+		ok, vertices, triangles, normals, uvs, _textures = pcall(Gltf.parseGlb, bytes, baseDir)
+	else
+		local text = LuauFile.loadText(objectPath)
+		if text == "" then
+			print("Failed to read " .. objectPath)
+			return
+		end
+		ok, vertices, triangles, normals, uvs, _textures = pcall(Gltf.parse, text, baseDir)
+	end
+	if not ok then
+		-- on pcall failure the second value is the error message
+		print("Failed to parse " .. objectPath .. ": " .. tostring(vertices))
+		return
+	end
+
+	local mesh = WorldDraw.spawnMesh()
+	if mesh == nil then
+		print("Failed to spawn a mesh")
+		return
+	end
+	mesh.position = camera.position
+	mesh.rotation = Quat.identity
+	-- glTF units are meters, world units are cm
+	mesh.scale = Vec3.new(100, 100, 100)
+	mesh.vertices = vertices
+	mesh.triangles = triangles
+	mesh.normals = normals
+	mesh.uVs = uvs
+	mesh:draw()
+
+	local ObjectObject: Object = {
+		name = objectName,
+		transform = objectTransform,
+		folder = "",
+		meshPath = objectPath,
+	}
+
+	local NewObject: LoadedObject = {
+		Object = ObjectObject,
+		LuauMesh = mesh,
+	}
+
+	table.insert(LoadedObjects, NewObject)
 end
 
 function DoGizmoControlling()
 	if selectedObject ~= -1 then
-		local object = objects[selectedObject]
-
+		local object = LoadedObjects[selectedObject]
 		if currentSelectionMode == 0 then
-			rotateCam = Controlling.ControlTranslateGizmo(object)
+			rotateCam = Controlling.ControlTranslateGizmo(object.Object)
 		elseif currentSelectionMode == 1 then
-			rotateCam = Controlling.ControlRotateGizmo(object)
+			rotateCam = Controlling.ControlRotateGizmo(object.Object)
 		elseif currentSelectionMode == 2 then
-			rotateCam = Controlling.ControlScaleGizmo(object)
+			rotateCam = Controlling.ControlScaleGizmo(object.Object)
 		end
 	end
 end
-if useProfiler then
-	DoGizmoControlling = Profiler:wrap(DoGizmoControlling)
+
+function SaveProject(projectName: string): boolean
+	if not config.saves then
+		config.saves = {}
+	end
+
+	local ProjectsObjects: { ProjectObject } = {}
+
+	for i, object: LoadedObject in LoadedObjects do
+		ProjectsObjects[i] = {
+			name = object.Object.name,
+			transform = object.Object.transform,
+			folder = object.Object.folder,
+			meshPath = object.Object.meshPath,
+			colour = object.LuauMesh.color,
+		}
+	end
+
+	local Project: EditProject = {
+		LoadedObjects = ProjectsObjects,
+	}
+
+	config.saves[projectName] = Project
+
+	saveConfig()
+	return true
+end
+
+function LoadProject(projectName: string): boolean
+	if not config.saves then
+		config.saves = {}
+		return false
+	end
+
+	if not config.saves[projectName] then
+		return false
+	end
+
+	local project = config.saves[projectName]
+
+	if project["objects"] then
+		print("Old project format, moving to a seperate json and not loading.") -- ig add a way to load old projects but it'd be way better to just not load em atm
+
+		if not config.oldSaves then
+			config.oldSaves = {}
+		end
+
+		if config.oldSaves[projectName] then
+			config.saves[projectName] = nil
+
+			return false -- already in old saves
+		end
+
+		config.oldSaves[projectName] = project
+		config.saves[projectName] = nil
+		saveConfig()
+		return false
+	end
+
+	for i, object: LoadedObject in ipairs(LoadedObjects) do
+		object.LuauMesh:destroy()
+	end
+	LoadedObjects = {}
+	Folders = {}
+
+	for i, object: ProjectObject in ipairs(project["LoadedObjects"]) do
+		SpawnMesh(object.meshPath, object.name, object.transform)
+		local newObject = LoadedObjects[#LoadedObjects]
+
+		local colour = object.colour :: { number }
+		local redIndex = #colour == 3 and 0 or 4
+		newObject.LuauMesh.color = LinearColor.new(colour[redIndex], colour[1], colour[2], colour[3])
+
+		newObject.Object.folder = object.folder
+
+		local doesFolderExist = false
+
+		for i, folder: Folder in Folders do
+			if folder.name == object.folder then
+				doesFolderExist = true
+			end
+		end
+
+		if not doesFolderExist and object.folder ~= "" then
+			Folders[#Folders + 1] = { name = object.folder, open = false }
+		end
+	end
+
+	return true
 end
 
 function tick(dt)
-	Profiler:tick(dt)
 	RedrawAll()
 	if not (S_hideGizmosOnUIOpen and not isGuiOpen) then
 		DoGizmoControlling()
@@ -189,35 +362,22 @@ function tick(dt)
 		Freecam.frecamtick(dt, true)
 	end
 
-	if Input.getKey(Input.Key.N) and not lastNKeyPress then
-		local newObj = {
-			name = "Object " .. #objects + 1,
-			folder = "",
-			transform = Transform.identity,
-			colour = LinearColor.White,
-			type = 1,
-		}
-		newObj.transform.position = camera.position + camera.rotation:getForwardVector() * 500
-		newObj.transform.rotation = gravity.upRotation
-		objects[#objects + 1] = newObj
-		selectedObject = #objects
-	end
-
 	if Input.getKey(Input.Key.F) and selectedObject ~= -1 then
-		camera.position = objects[selectedObject].transform.position
-			+ objects[selectedObject].transform.rotation:getForwardVector() * -250
-			+ objects[selectedObject].transform.rotation:getUpVector() * 250
-			+ objects[selectedObject].transform.rotation:getRightVector() * -250
+		camera.position = LoadedObjects[selectedObject].Object.transform.position
+			+ LoadedObjects[selectedObject].Object.transform.rotation:getForwardVector() * -250
+			+ LoadedObjects[selectedObject].Object.transform.rotation:getUpVector() * 250
+			+ LoadedObjects[selectedObject].Object.transform.rotation:getRightVector() * -250
 		camera:lookAt(
-			objects[selectedObject].transform.position,
-			objects[selectedObject].transform.rotation:getUpVector()
+			LoadedObjects[selectedObject].Object.transform.position,
+			LoadedObjects[selectedObject].Object.transform.rotation:getUpVector()
 		)
 
-		Freecam.setRotAndGrav(camera.rotation:euler(), objects[selectedObject].transform.rotation)
+		Freecam.setRotAndGrav(camera.rotation:euler(), LoadedObjects[selectedObject].Object.transform.rotation)
 	end
 
-	if Input.getKey(Input.Key.BackSpace) and selectedObject ~= -1 then
-		table.remove(objects, selectedObject)
+	if (Input.getKey(Input.Key.BackSpace) or Input.getKey(Input.Key.Delete)) and selectedObject ~= -1 then
+		LoadedObjects[selectedObject].LuauMesh:destroy()
+		table.remove(LoadedObjects, selectedObject)
 		selectedObject = -1
 	end
 
@@ -232,14 +392,11 @@ function tick(dt)
 	end
 
 	if (timerStart - timer) <= 0 then
-		if objects ~= {} then
+		if LoadedObjects ~= {} then
 			if not config.saves then
 				config.saves = {}
 			end
-			config.saves["AutoSave"] = {
-				objects = objects,
-				folders = folders,
-			}
+			SaveProject("AutoSave")
 			saveConfig()
 			print("Autosaved project sucessfully")
 		else
@@ -249,11 +406,7 @@ function tick(dt)
 	end
 
 	timer = DateTime.getCurrentTime().ticks / 10000000
-	lastNKeyPress = Input.getKey(Input.Key.N)
 	isGuiOpen = false
-end
-if useProfiler then
-	tick = Profiler:wrapScriptTick(tick)
 end
 
 function onGui()
@@ -263,11 +416,11 @@ function onGui()
 	if Gui.beginTabItem("Hierarchy") then
 		search = Gui.inputText("Search", search)
 
-		if #folders == 0 and #objects == 0 then
-			Gui.text("Please create a folder or new object by pressing N to get started!")
+		if #Folders == 0 and #LoadedObjects == 0 then
+			Gui.text("Nothing loaded, get started by going into the Assets tab!")
 		else
 			Gui.beginListBox("##ObjectList")
-			for i, v: { name: string, open: boolean } in ipairs(folders) do
+			for i, v: Folder in ipairs(Folders) do
 				local open = v.open
 				local label = (open and Icon.CaretDown or Icon.CaretRight)
 					.. " "
@@ -282,9 +435,12 @@ function onGui()
 				end
 				if open then
 					Gui.indent()
-					for j, f in ipairs(objects) do
-						if f.folder == v.name and string.lower(f.name):match(string.lower(search)) ~= nil then
-							if Gui.selectable(f.name .. "##" .. j, selectedObject == j) then
+					for j, f: LoadedObject in ipairs(LoadedObjects) do
+						if
+							f.Object.folder == v.name
+							and string.lower(f.Object.name):match(string.lower(search)) ~= nil
+						then
+							if Gui.selectable(f.Object.name .. "##" .. j, selectedObject == j) then
 								selectedObject = selectedObject == j and -1 or j
 							end
 						end
@@ -293,9 +449,9 @@ function onGui()
 				end
 			end
 
-			for j, f in ipairs(objects) do
-				if f.folder == "" and string.lower(f.name):match(string.lower(search)) ~= nil then
-					if Gui.selectable(f.name .. "##" .. j, selectedObject == j) then
+			for j, f in ipairs(LoadedObjects) do
+				if f.Object.folder == "" and string.lower(f.Object.name):match(string.lower(search)) ~= nil then
+					if Gui.selectable(f.Object.name .. "##" .. j, selectedObject == j) then
 						selectedObject = selectedObject == j and -1 or j
 					end
 				end
@@ -304,13 +460,18 @@ function onGui()
 
 			Gui.separator()
 		end
+
+		if #LoadedObjects == 0 then
+			Gui.beginDisabled()
+		end
+
 		Gui.separatorText("Folders")
 		if not inFolderCreateMode then
 			if Gui.button(Icon.Folder .. " New Folder") then
 				inFolderCreateMode = true
 				folderView = 0
 			end
-			if #folders > 0 then
+			if #Folders > 0 then
 				Gui.sameLine()
 				if Gui.button(Icon.FolderMinus .. " Delete Folder") then
 					inFolderCreateMode = true
@@ -321,7 +482,7 @@ function onGui()
 			if folderView == 0 then
 				tempFolderName = Gui.inputText("Folder Name", tempFolderName)
 				if Gui.button("Confirm") then
-					folders[#folders + 1] = { name = tempFolderName, open = false }
+					Folders[#Folders + 1] = { name = tempFolderName, open = false }
 					tempFolderName = ""
 					inFolderCreateMode = false
 				end
@@ -331,12 +492,12 @@ function onGui()
 					inFolderCreateMode = false
 				end
 			else
-				for fi, f in ipairs(folders) do
+				for fi, f in ipairs(Folders) do
 					if Gui.selectable(f.name, false) then
-						table.remove(folders, fi)
-						for oi, i in ipairs(objects) do
-							if i.folder == f.name then
-								i.folder = ""
+						table.remove(Folders, fi)
+						for oi, i in ipairs(LoadedObjects) do
+							if i.Object.folder == f.name then
+								i.Object.folder = ""
 							end
 						end
 						folderView = 0
@@ -349,11 +510,16 @@ function onGui()
 				end
 			end
 		end
+		if #LoadedObjects == 0 then
+			Gui.endDisabled()
+		end
+
 		Gui.endTabItem()
 	end
 	if Gui.beginTabItem("Properties") then
 		if selectedObject ~= -1 then
-			local object = objects[selectedObject]
+			local object = LoadedObjects[selectedObject].Object
+			local luauMesh = LoadedObjects[selectedObject].LuauMesh
 			if object == nil then -- you somehow selected a deleted object, how the freak?
 				print("added logigng since this WILL cause errors later") -- it didnt somehow, but imma keep this logging for if i release it and it SOMEHOW reaches this stupid state that i couldnt even forcefully get myself to lol
 				selectedObject = -1
@@ -377,40 +543,13 @@ function onGui()
 
 			object.name = Gui.inputText("Name", object.name)
 			if Gui.button(Icon.Copy .. "Delete Object") then
-				table.remove(objects, selectedObject)
+				LoadedObjects[selectedObject].LuauMesh:destroy()
+				table.remove(LoadedObjects, selectedObject)
 				selectedObject = -1
 			end
-			Gui.sameLine()
-			if Gui.button(Icon.Copy .. "Duplicate Object") then
-				local baseName, num = object.name:match("^(.-)%s*(%d+)$")
-				local name = ""
-				local numberbutnumbified = tonumber(num)
-				if baseName and num and numberbutnumbified then
-					name = baseName .. " " .. (numberbutnumbified + 1)
-				else
-					name = object.name .. " 1"
-				end
-				local newObj = {
-					name = name,
-					folder = object.folder,
-					transform = Transform.new(
-						object.transform.position,
-						object.transform.rotation,
-						object.transform.scale
-					),
-					colour = object.colour,
-					type = object.type,
-				}
-				objects[#objects + 1] = newObj
-				selectedObject = #objects
-			end
-			--Gui.sameLine()
-			--if Gui.button("Reset To Default") then
-			--	--object = object.baseObj
-			--end
-			if #folders ~= 0 then
+			if #Folders ~= 0 then
 				Gui.separatorText("Folders")
-				for fi, f in ipairs(folders) do
+				for fi, f in ipairs(Folders) do
 					if Gui.selectable(f.name, f.name == object.folder) then
 						if f.name == object.folder then
 							object.folder = ""
@@ -422,29 +561,11 @@ function onGui()
 			end
 
 			Gui.separator()
-			local quatColour = Formatting.LinearColourToQuat(object.colour)
-			local quatColourBut255xed =
-				Quat.new(quatColour.x * 255, quatColour.y * 255, quatColour.z * 255, quatColour.w * 255)
-			local tempColour = Gui.dragFloat4("Colour", quatColourBut255xed, 1, 0, 255)
-
-			if tempColour ~= quatColourBut255xed then
-				local quatColourButUN255xed =
-					Quat.new(tempColour.x / 255, tempColour.y / 255, tempColour.z / 255, tempColour.w / 255)
-				object.colour = LinearColor.new(
-					quatColourButUN255xed.x,
-					quatColourButUN255xed.y,
-					quatColourButUN255xed.z,
-					quatColourButUN255xed.w
-				)
+			local newColour = Gui.colorEdit("Colour", luauMesh.color)
+			if newColour ~= luauMesh.color then
+				luauMesh.color = newColour
+				luauMesh:draw()
 			end
-
-			Gui.beginListBox("Object Types")
-			for i, objectType in objectTypes do
-				if Gui.selectable(objectType.Name, object.type == objectType.TypeIndex) then
-					object.type = objectType.TypeIndex
-				end
-			end
-			Gui.endListBox()
 		else
 			Gui.beginDisabled()
 			Gui.text("Nothing Selected")
@@ -460,23 +581,23 @@ function onGui()
 					saveName = Gui.inputText("Project Name", saveName)
 					if saveName == "" then
 						Gui.beginDisabled()
-						Gui.textDisabled("Make sure to input a name")
+						Gui.textColored(LinearColor.new(1, 0, 0, 1), "Make sure to input a name")
+					elseif config.saves[saveName] ~= nil then
+						Gui.beginDisabled()
+						Gui.textColored(
+							LinearColor.new(1, 0, 0, 1),
+							"You cannot make a project with the same name as another project."
+						)
 					end
-					if Gui.button("Save " .. #objects .. " objects") then
-						if not config.saves then
-							config.saves = {}
-						end
-						config.saves[saveName] = {
-							objects = objects,
-							folders = folders,
-						}
-						saveConfig()
+					if Gui.button("Save " .. #LoadedObjects .. " objects") then
+						SaveProject(saveName)
+
 						currentProjectName = saveName
 						saveName = ""
 						inProjectMode = false
 						selectedObject = -1
 					end
-					if saveName == "" then
+					if saveName == "" or config.saves[saveName] ~= nil then
 						Gui.endDisabled()
 					end
 					if Gui.button("Cancel") then
@@ -485,13 +606,7 @@ function onGui()
 					end
 				else
 					Gui.text("Saving...")
-					if not config.saves then
-						config.saves = {}
-					end
-					config.saves[currentProjectName] = {
-						objects = objects,
-						folders = folders,
-					}
+					SaveProject(currentProjectName)
 					saveConfig()
 					inProjectMode = false
 				end
@@ -503,23 +618,9 @@ function onGui()
 
 				for n, p in config.saves do
 					if Gui.selectable(n .. "##" .. n, false) then
-						local tempObjects = p.objects
-						for i, o in ipairs(tempObjects) do
-							if o.colour == nil then
-								o.colour = LinearColor.White
-							else
-								local redIndex = #o.colour == 3 and 0 or 4
-								o.colour = LinearColor.new(o.colour[redIndex], o.colour[1], o.colour[2], o.colour[3])
-							end
-
-							if o.type == nil then
-								o.type = 1
-							end
+						if LoadProject(n) then
+							currentProjectName = n
 						end
-						objects = tempObjects
-						folders = p.folders
-						currentProjectName = n
-
 						inProjectMode = false
 					end
 				end
@@ -543,10 +644,15 @@ function onGui()
 			if currentProjectName ~= "" then
 				Gui.sameLine()
 				if Gui.button("Unload") then
+					for i, object in ipairs(LoadedObjects) do
+						object.LuauMesh:destroy()
+					end
+
+					LoadedObjects = {}
+					Folders = {}
+
 					selectedObject = -1
 					currentProjectName = ""
-					objects = {}
-					folders = {}
 				end
 			end
 		end
@@ -554,30 +660,25 @@ function onGui()
 	end
 	if Gui.beginTabItem("Assets") then
 		Gui.textDisabled("Hover over a asset and press your space bar to spawn it infront of you")
-		for i, objectType in ipairs(objectTypes) do
-			Gui.beginChild(objectType.Name .. "##" .. i, 115, 115, true)
-			Gui.text(objectType.Name)
+		for i, assetType in ipairs(Assets) do
+			Gui.beginChild(assetType.name .. "##" .. i, 115, 115, true)
+			Gui.text(assetType.name)
 			Gui.endChild()
-			if
-				Gui.isItemHovered()
-				and Input.getKey(Input.Key.SpaceBar)
-				and not prevSpacebarPress
-				and not objectType.PrevPress
-			then
-				local newObj = {
-					name = "Object " .. #objects + 1,
-					folder = "",
-					transform = Transform.identity,
-					colour = LinearColor.White,
-					type = objectType.TypeIndex,
-				}
-				newObj.transform.position = camera.position + camera.rotation:getForwardVector() * 500
-				newObj.transform.rotation = gravity.upRotation
-				objects[#objects + 1] = newObj
-				selectedObject = #objects
+			if Gui.isItemHovered() and Input.getKey(Input.Key.SpaceBar) and not prevSpacebarPress then
+				SpawnMesh(
+					assetType.path,
+					"Object " .. #LoadedObjects + 1,
+					Transform.new(
+						camera.position + camera.rotation:getForwardVector() * 500,
+						gravity.upRotation,
+						Vec3.oneVector
+					)
+				)
+				selectedObject = #LoadedObjects
 			end
-			Gui.sameLine()
-			objectType.PrevPress = Gui.isItemHovered() and prevSpacebarPress
+			if i % 4 ~= 0 then
+				Gui.sameLine()
+			end
 		end
 		prevSpacebarPress = Input.getKey(Input.Key.SpaceBar)
 		Gui.newLine()
@@ -602,24 +703,17 @@ function onGui()
 
 		Gui.separatorText("Controls")
 		Gui.text("WASD - Moving the camera")
-		Gui.text("N - New Cube (spawns infront of camera)")
 		Gui.text("F - Set camera's focus on the select object")
-		Gui.text(Icon.Backspace .. " - Delete selected object")
+		Gui.text(Icon.Backspace .. " or DEL - Delete selected object")
 		Gui.text("1 - Change gizmo to Translate")
 		Gui.text("2 - Change gizmo to Rotate")
 		Gui.text("3 - Change gizmo to Scale")
-		Gui.separatorText("Debug stuff?")
+		--[[Gui.separatorText("Debug stuff?")
 		Gui.text("Autosave timer: " .. tostring(timerStart - timer))
-		Gui.text("Is GUI Open: " .. tostring(isGuiOpen))
-		if useProfiler then
-			Profiler:controls()
-			Profiler:graph()
-		end
+		Gui.text("Is GUI Open: " .. tostring(isGuiOpen)) -- why is this here when all the time i should see it? idk. do i want more stuff to make debug stuff look nerdy? ya!
+		--]]
 		Gui.endTabItem()
 	end
 	Gui.endTabBar()
 	isGuiOpen = true
-end
-if useProfiler then
-	onGui = Profiler:wrap(onGui)
 end
