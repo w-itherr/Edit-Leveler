@@ -31,6 +31,7 @@ type Object = {
 	transform: Transform,
 	folder: string,
 	meshPath: string,
+	shouldUpdate: boolean,
 }
 
 type Folder = {
@@ -154,23 +155,26 @@ function RedrawAll()
 	WorldDraw.clear()
 
 	for i, object in ipairs(LoadedObjects) do
-		object.LuauMesh.position = object.Object.transform.position
-		object.LuauMesh.rotation = object.Object.transform.rotation
-		local newScale = object.Object.transform.scale * 100
+		if object.Object.shouldUpdate then
+			object.LuauMesh.position = object.Object.transform.position
+			object.LuauMesh.rotation = object.Object.transform.rotation
+			local newScale = object.Object.transform.scale * 100
 
-		if newScale.x == 0 then -- this has to be done as when luaumesh's are scale to 0 they just go invis and that isnt really the functionality i would like
-			newScale.x = 0.0001
-		end
-		if newScale.y == 0 then
-			newScale.y = 0.0001
-		end
-		if newScale.z == 0 then
-			newScale.z = 0.0001
-		end
+			if newScale.x == 0 then -- this has to be done as when luaumesh's are scale to 0 they just go invis and that isnt really the functionality i would like
+				newScale.x = 0.0001
+			end
+			if newScale.y == 0 then
+				newScale.y = 0.0001
+			end
+			if newScale.z == 0 then
+				newScale.z = 0.0001
+			end
 
-		object.LuauMesh.scale = newScale
+			object.LuauMesh.scale = newScale
 
-		object.LuauMesh:draw()
+			object.LuauMesh:draw()
+			object.Object.shouldUpdate = false
+		end
 	end
 
 	if selectedObject ~= -1 then
@@ -252,6 +256,7 @@ function SpawnMesh(objectPath: string, objectName: string, objectTransform: Tran
 		transform = objectTransform,
 		folder = "",
 		meshPath = objectPath,
+		shouldUpdate = true,
 	}
 
 	local NewObject: LoadedObject = {
@@ -537,20 +542,34 @@ function onGui()
 				selectedObject = -1
 			end
 
-			Gui.separatorText("Transform")
-			object.transform.position = Gui.dragFloat3("Position", object.transform.position, 1, -1000000, 1000000)
+			Gui.separatorText("Transform") --
+			local newPos = Gui.dragFloat3("Position", object.transform.position, 1, -1000000, 1000000)
+			if newPos ~= object.transform.position then
+				object.transform.position = newPos
+				object.shouldUpdate = true
+			end
 
-			local newRot = Gui.dragFloat3("Rotation", object.transform.rotation:euler(), 0.1, -1000000, 1000000)
-			object.transform.rotation = Quat.fromEuler(newRot.x, newRot.y, newRot.z)
+			local newRotEuler = Gui.dragFloat3("Rotation", object.transform.rotation:euler(), 0.1, -1000000, 1000000)
+			local newRot = Quat.fromEuler(newRotEuler.x, newRotEuler.y, newRotEuler.z)
+			if newRot ~= object.transform.rotation then
+				object.transform.rotation = newRot
+				object.shouldUpdate = true
+			end
 			Gui.sameLine()
 			if Gui.smallButton("Reset##Rot") then
 				object.transform.rotation = Quat.identity
+				object.shouldUpdate = true
 			end
 
-			object.transform.scale = Gui.dragFloat3("Scale", object.transform.scale, 0.01, 0, 1000000)
+			local newScale = Gui.dragFloat3("Scale", object.transform.scale, 0.01, 0, 1000000)
+			if newScale ~= object.transform.scale then
+				object.transform.scale = newScale
+				object.shouldUpdate = true
+			end
 			Gui.sameLine()
 			if Gui.smallButton("Reset##Scale") then
 				object.transform.scale = Vec3.oneVector
+				object.shouldUpdate = true
 			end
 
 			object.name = Gui.inputText("Name", object.name)
@@ -591,7 +610,7 @@ function onGui()
 			local newColour = Gui.colorEdit("Colour", luauMesh.color)
 			if newColour ~= luauMesh.color then
 				luauMesh.color = newColour
-				luauMesh:draw()
+				object.shouldUpdate = true
 			end
 		else
 			Gui.beginDisabled()

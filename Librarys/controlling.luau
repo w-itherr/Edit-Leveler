@@ -1,9 +1,11 @@
 --!strict
 
 type Object = {
-	transform: Transform,
 	name: string,
+	transform: Transform,
 	folder: string,
+	meshPath: string,
+	shouldUpdate: boolean,
 }
 
 type Controlling = {
@@ -180,6 +182,7 @@ function Controlling.ControlTranslateGizmo(object: Object)
 		local movement = Controlling.GetMovementAlongLine(lineStart, lineEnd)
 
 		object.transform.position += axisDir * movement
+		object.shouldUpdate = true
 	else
 		lastMouseScreenPos = Vec3.zeroVector
 
@@ -232,6 +235,7 @@ function Controlling.ControlRotateGizmo(object: Object)
 
 			object.transform.rotation = frozenStartRotation * QuatFromAxisAngle(frozenAxisLocal, angle)
 		end
+		object.shouldUpdate = true
 	else
 		local camPos = camera.position
 		local rayDir = (camera:castRayFromMouse().position - camPos):getSafeNormal()
@@ -304,6 +308,7 @@ function Controlling.ControlScaleGizmo(object: Object)
 		else
 			object.transform.scale.x = math.max(0, object.transform.scale.x + scaleDelta)
 		end
+		object.shouldUpdate = true
 	else
 		lastMouseScreenPos = Vec3.zeroVector
 		local camPos = camera.position
