@@ -98,7 +98,7 @@ function GetAssets()
 	for i, fileName in ipairs(LuauFile.listFiles("Objects")) do
 		local lower = fileName:lower()
 		print(lower)
-		if lower:match("%.md$") then
+		if lower:match("%.md$") or lower:match("%.glb$") or lower:match("%.glbf$") then
 			print(lower)
 			local asset = {
 				path = lower,
@@ -191,7 +191,11 @@ function SpawnMesh(objectPath: string, objectName: string, objectTransform: Tran
 	local baseDir = objectPath:match("^(.*)/[^/]+$") or ""
 
 	local ok, vertices, triangles, normals, uvs, textures
-	if objectPath:lower():match("%.md$") then
+	if
+		objectPath:lower():match("%.md$")
+		or objectPath:lower():match("%.glb$")
+		or objectPath:lower():match("%.glbf$")
+	then
 		local bytes = LuauFile.loadBytes(objectPath)
 		if #bytes == 0 then
 			print("Failed to read " .. objectPath .. " defaulting to cube.")
