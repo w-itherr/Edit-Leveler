@@ -56,6 +56,21 @@ type EditProject = {
 	LoadedObjects: { ProjectObject },
 }
 
+type Snap = {
+	name: string,
+	transform: Transform,
+	folder: string,
+	meshPath: string,
+	colour: LinearColor,
+}
+
+type HistoryEntry = {
+	kind: string,
+	index: number,
+	before: Snap?,
+	after: Snap?,
+}
+
 local Assets: { Asset } = {}
 local LoadedObjects: { LoadedObject } = {}
 local Folders: { Folder } = {}
@@ -65,8 +80,18 @@ local selectedObject = -1
 local search = ""
 local currentSelectionMode = 0 -- 0 = Translation, 1 = Rotation, 2 = Scale
 
+-- object history for undo/redo
+local UndoS: { HistoryEntry } = {}
+local RedoS: { HistoryEntry } = {}
+local gizmoDragBefore: Snap? = nil
+local prevGizmoMouseDown = false
+local EditBefore: Snap? = nil
+local DidEditChange = false
+
 -- Inputs
 local prevSpacebarPress = false
+local prevUndoPress = false
+local prevRedoPress = false
 
 ---- GUI Views
 -- Folder view
@@ -93,6 +118,165 @@ local isGuiOpen = false
 
 -- Settings
 local S_hideGizmosOnUIOpen = true
+
+-- Helper to get pos/rot/scale faster
+function CopyTransform(transform: Transform): Transform
+	return Transform.new(transform.position, transform.rotation, transform.scale)
+end
+
+function SnapshotObject(object: LoadedObject): Snap
+	return {
+		name = object.Object.name,
+		transform = CopyTransform(object.Object.transform),
+		folder = object.Object.folder,
+		meshPath = object.Object.meshPath,
+		colour = object.LuauMesh.color,
+	}
+end
+
+--[[function debugtostring(snapshot: Snap?): string
+	if snapshot == nil then
+		return "nil"
+	end
+
+	return "{name="
+		.. tostring(snapshot.name)
+		.. ", folder="
+		.. tostring(snapshot.folder)
+		.. ", meshPath="
+		.. tostring(snapshot.meshPath)
+		.. ", position="
+		.. tostring(snapshot.transform.position)
+		.. ", rotation="
+		.. tostring(snapshot.transform.rotation)
+		.. ", scale="
+		.. tostring(snapshot.transform.scale)
+		.. ", colour="
+		.. tostring(snapshot.colour)
+		.. "}"
+end
+--]]
+
+function PushHistory(entry: HistoryEntry)
+	table.insert(UndoS, entry)
+	-- it caps to 3 below. you can increase it but 3 should be enough
+	while #UndoS > 3 do
+		table.remove(UndoS, 1)
+	end
+	RedoS = {}
+end
+
+function RecordChange(objectIndex: number, before: Snap)
+	local object = LoadedObjects[objectIndex]
+	if object == nil then
+		return
+	end
+	PushHistory({ kind = "change", index = objectIndex, before = before, after = SnapshotObject(object) })
+end
+
+function SnapshotsDiffer(before: Snap, after: Snap): boolean
+	return before.name ~= after.name
+		or before.folder ~= after.folder
+		or before.transform.position ~= after.transform.position
+		or before.transform.rotation ~= after.transform.rotation
+		or before.transform.scale ~= after.transform.scale
+		or before.colour ~= after.colour
+end
+
+function ApplySnapshot(object: LoadedObject, snapshot: Snap)
+	object.Object.name = snapshot.name
+	object.Object.transform = CopyTransform(snapshot.transform)
+	object.Object.folder = snapshot.folder
+	object.Object.meshPath = snapshot.meshPath
+	object.LuauMesh.color = snapshot.colour
+	object.Object.shouldUpdate = true
+end
+
+function DeleteObject(index: number, recordHistory: boolean)
+	local object = LoadedObjects[index]
+	if object == nil then
+		return
+	end
+	local snapshot = recordHistory and SnapshotObject(object) or nil
+	object.LuauMesh:destroy()
+	table.remove(LoadedObjects, index)
+	selectedObject = -1
+	if recordHistory and snapshot then
+		PushHistory({ kind = "delete", index = index, before = snapshot })
+	end
+end
+
+function RestoreObject(snapshot: Snap, index: number)
+	SpawnMesh(snapshot.meshPath, snapshot.name, CopyTransform(snapshot.transform))
+	local restored = table.remove(LoadedObjects, #LoadedObjects)
+	if restored == nil then
+		return
+	end
+	ApplySnapshot(restored, snapshot)
+	table.insert(LoadedObjects, math.min(index, #LoadedObjects + 1), restored)
+	selectedObject = math.min(index, #LoadedObjects)
+end
+
+function ApplyHistory(entry: HistoryEntry, useAfter: boolean)
+	local snapshot = if useAfter then entry.after else entry.before
+	if entry.kind == "change" and snapshot then
+		local object = LoadedObjects[entry.index]
+		if object then
+			ApplySnapshot(object, snapshot)
+		end
+	elseif entry.kind == "delete" then
+		if useAfter then
+			DeleteObject(entry.index, false)
+		elseif snapshot then
+			RestoreObject(snapshot, entry.index)
+		end
+	elseif entry.kind == "create" then
+		if useAfter and snapshot then
+			RestoreObject(snapshot, entry.index)
+		else
+			DeleteObject(entry.index, false)
+		end
+	end
+end
+
+function CleanupEdit()
+	if EditBefore and DidEditChange and selectedObject ~= -1 then
+		RecordChange(selectedObject, EditBefore)
+	end
+	EditBefore = nil
+	DidEditChange = false
+end
+
+function StartEdit(objectIndex: number)
+	if EditBefore == nil then
+		local object = LoadedObjects[objectIndex]
+		if object then
+			EditBefore = SnapshotObject(object)
+		end
+	end
+	DidEditChange = true
+end
+
+function Undo()
+	CleanupEdit()
+	local entry = table.remove(UndoS)
+	if entry then
+		ApplyHistory(entry, false)
+		table.insert(RedoS, entry)
+		-- print("undo done " .. debugtostring(entry.after) .. " " .. debugtostring(entry.before))
+		-- ^ this for debugging undo and below is for redo, feel free to remove it i just thought i may use it later                    misery
+	end
+end
+
+function Redo()
+	CleanupEdit()
+	local entry = table.remove(RedoS)
+	if entry then
+		ApplyHistory(entry, true)
+		table.insert(UndoS, entry)
+		-- print("redo done " .. debugtostring(entry.before) .. " " .. debugtostring(entry.after))
+	end
+end
 
 function GetAssets()
 	Assets = {}
@@ -147,6 +331,12 @@ function onTransitionBegin(transitionInfo: Transition)
 	Folders = {}
 	LoadedObjects = {}
 	selectedObject = -1
+	UndoS = {}
+	RedoS = {}
+	EditBefore = nil
+	DidEditChange = false
+	gizmoDragBefore = nil
+	prevGizmoMouseDown = false
 
 	WorldDraw.clearAll()
 end
@@ -270,6 +460,10 @@ end
 function DoGizmoControlling()
 	if selectedObject ~= -1 then
 		local object = LoadedObjects[selectedObject]
+		local mouseDown = Input.getKey(Input.Key.LeftMouseButton)
+		if gizmoDragBefore == nil and mouseDown then
+			gizmoDragBefore = SnapshotObject(object)
+		end
 		if currentSelectionMode == 0 then
 			rotateCam = Controlling.ControlTranslateGizmo(object.Object)
 		elseif currentSelectionMode == 1 then
@@ -277,6 +471,17 @@ function DoGizmoControlling()
 		elseif currentSelectionMode == 2 then
 			rotateCam = Controlling.ControlScaleGizmo(object.Object)
 		end
+		if gizmoDragBefore and prevGizmoMouseDown and not mouseDown then
+			local after = SnapshotObject(object)
+			if SnapshotsDiffer(gizmoDragBefore, after) then
+				PushHistory({ kind = "change", index = selectedObject, before = gizmoDragBefore, after = after })
+			end
+			gizmoDragBefore = nil
+		end
+		prevGizmoMouseDown = mouseDown
+	else
+		gizmoDragBefore = nil
+		prevGizmoMouseDown = false
 	end
 end
 
@@ -343,6 +548,10 @@ function LoadProject(projectName: string): boolean
 	end
 	LoadedObjects = {}
 	Folders = {}
+	UndoS = {}
+	RedoS = {}
+	EditBefore = nil
+	DidEditChange = false
 
 	for i, object: ProjectObject in ipairs(project["LoadedObjects"]) do
 		SpawnMesh(object.meshPath, object.name, object.transform)
@@ -392,10 +601,19 @@ function tick(dt)
 		Freecam.setRotAndGrav(camera.rotation:euler(), LoadedObjects[selectedObject].Object.transform.rotation)
 	end
 
+	local undoPressed = Input.getKey(Input.Key.LeftControl) and Input.getKey(Input.Key.Z)
+	local redoPressed = Input.getKey(Input.Key.LeftControl)
+		and (Input.getKey(Input.Key.Y) or (Input.getKey(Input.Key.LeftShift) and Input.getKey(Input.Key.Z)))
+	if redoPressed and not prevRedoPress then
+		Redo()
+	elseif undoPressed and not prevUndoPress then
+		Undo()
+	end
+	prevUndoPress = undoPressed
+	prevRedoPress = redoPressed
+
 	if (Input.getKey(Input.Key.BackSpace) or Input.getKey(Input.Key.Delete)) and selectedObject ~= -1 then
-		LoadedObjects[selectedObject].LuauMesh:destroy()
-		table.remove(LoadedObjects, selectedObject)
-		selectedObject = -1
+		DeleteObject(selectedObject, true)
 	end
 
 	if Input.getKey(Input.Key.One) then
@@ -428,6 +646,7 @@ end
 
 function onGui()
 	isGuiOpen = true
+	DidEditChange = false
 
 	Gui.beginTabBar("Options")
 	if Gui.beginTabItem("Hierarchy") then
@@ -537,6 +756,7 @@ function onGui()
 		if selectedObject ~= -1 then
 			local object = LoadedObjects[selectedObject].Object
 			local luauMesh = LoadedObjects[selectedObject].LuauMesh
+			local objectIndex = selectedObject
 			if object == nil then -- you somehow selected a deleted object, how the freak?
 				print("added logigng since this WILL cause errors later") -- it didnt somehow, but imma keep this logging for if i release it and it SOMEHOW reaches this stupid state that i couldnt even forcefully get myself to lol
 				selectedObject = -1
@@ -545,6 +765,7 @@ function onGui()
 			Gui.separatorText("Transform") --
 			local newPos = Gui.dragFloat3("Position", object.transform.position, 1, -1000000, 1000000)
 			if newPos ~= object.transform.position then
+				StartEdit(objectIndex)
 				object.transform.position = newPos
 				object.shouldUpdate = true
 			end
@@ -552,31 +773,37 @@ function onGui()
 			local newRotEuler = Gui.dragFloat3("Rotation", object.transform.rotation:euler(), 0.1, -1000000, 1000000)
 			local newRot = Quat.fromEuler(newRotEuler.x, newRotEuler.y, newRotEuler.z)
 			if newRot ~= object.transform.rotation then
+				StartEdit(objectIndex)
 				object.transform.rotation = newRot
 				object.shouldUpdate = true
 			end
 			Gui.sameLine()
 			if Gui.smallButton("Reset##Rot") then
+				StartEdit(objectIndex)
 				object.transform.rotation = Quat.identity
 				object.shouldUpdate = true
 			end
 
 			local newScale = Gui.dragFloat3("Scale", object.transform.scale, 0.01, 0, 1000000)
 			if newScale ~= object.transform.scale then
+				StartEdit(objectIndex)
 				object.transform.scale = newScale
 				object.shouldUpdate = true
 			end
 			Gui.sameLine()
 			if Gui.smallButton("Reset##Scale") then
+				StartEdit(objectIndex)
 				object.transform.scale = Vec3.oneVector
 				object.shouldUpdate = true
 			end
 
-			object.name = Gui.inputText("Name", object.name)
+			local newName = Gui.inputText("Name", object.name)
+			if newName ~= object.name then
+				StartEdit(objectIndex)
+				object.name = newName
+			end
 			if Gui.button(Icon.Copy .. "Delete Object") then
-				LoadedObjects[selectedObject].LuauMesh:destroy()
-				table.remove(LoadedObjects, selectedObject)
-				selectedObject = -1
+				DeleteObject(selectedObject, true)
 			end
 
 			Gui.sameLine()
@@ -591,12 +818,14 @@ function onGui()
 				local newObject = LoadedObjects[#LoadedObjects]
 				newObject.LuauMesh.color = currentObject.LuauMesh.color
 				selectedObject = #LoadedObjects
+				PushHistory({ kind = "create", index = selectedObject, after = SnapshotObject(newObject) })
 			end
 
 			if #Folders ~= 0 then
 				Gui.separatorText("Folders")
 				for fi, f in ipairs(Folders) do
 					if Gui.selectable(f.name, f.name == object.folder) then
+						StartEdit(objectIndex)
 						if f.name == object.folder then
 							object.folder = ""
 						else
@@ -609,6 +838,7 @@ function onGui()
 			Gui.separator()
 			local newColour = Gui.colorEdit("Colour", luauMesh.color)
 			if newColour ~= luauMesh.color then
+				StartEdit(objectIndex)
 				luauMesh.color = newColour
 				object.shouldUpdate = true
 			end
@@ -696,6 +926,10 @@ function onGui()
 
 					LoadedObjects = {}
 					Folders = {}
+					UndoS = {}
+					RedoS = {}
+					EditBefore = nil
+					DidEditChange = false
 
 					selectedObject = -1
 					currentProjectName = ""
@@ -721,6 +955,11 @@ function onGui()
 					)
 				)
 				selectedObject = #LoadedObjects
+				PushHistory({
+					kind = "create",
+					index = selectedObject,
+					after = SnapshotObject(LoadedObjects[selectedObject]),
+				})
 			end
 			if i % 4 ~= 0 then
 				Gui.sameLine()
@@ -751,15 +990,20 @@ function onGui()
 		Gui.text("WASD - Moving the camera")
 		Gui.text("F - Set camera's focus on the select object")
 		Gui.text(Icon.Backspace .. " or DEL - Delete selected object")
+		Gui.text("Ctrl + Z - Undo")
+		Gui.text("Ctrl + Y  /  Ctrl + Shift + Z - Redo")
 		Gui.text("1 - Change gizmo to Translate")
 		Gui.text("2 - Change gizmo to Rotate")
 		Gui.text("3 - Change gizmo to Scale")
 		--[[Gui.separatorText("Debug stuff?")
 		Gui.text("Autosave timer: " .. tostring(timerStart - timer))
-		Gui.text("Is GUI Open: " .. tostring(isGuiOpen)) -- why is this here when all the time i should see it? idk. do i want more stuff to make debug stuff look nerdy? ya!
-		--]]
+		Gui.text("Is GUI Open: " .. tostring(isGuiOpen)) -- why is this here when all the time i should see it? idk. do i want more stuff to make debug stuff look nerdy? ya! that's misery		--]]
 		Gui.endTabItem()
+		--]]
 	end
 	Gui.endTabBar()
+	if not DidEditChange then
+		CleanupEdit()
+	end
 	isGuiOpen = true
 end

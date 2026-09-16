@@ -17,6 +17,7 @@ type Controlling = {
 	ControlTranslateGizmo: (object: Object) -> (),
 	ControlRotateGizmo: (object: Object) -> (),
 	ControlScaleGizmo: (object: Object) -> (),
+	IsControlling: () -> boolean, -- referenced in editor for undo/redo
 }
 local Controlling: Controlling = {} :: Controlling
 
@@ -31,6 +32,10 @@ local frozenStartRotation = Quat.new(0, 0, 0, 1)
 local frozenStartHitPoint = Vec3.zeroVector
 
 local translateRadius = 100
+
+function Controlling.IsControlling(): boolean
+	return isControlling
+end
 
 function Controlling.GetIfMouseIsIn2Pos(camPos: Vec3, rayDir: Vec3, A: Vec3, B: Vec3): boolean
 	local AB = B - A
